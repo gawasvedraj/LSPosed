@@ -253,20 +253,28 @@ void Logcat::EnsureLogWatchDog() {
     constexpr static size_t kErr = -1;
     std::thread watch_dog([this] {
         while (true) {
+            bool shouldRestartLogd = false;
             auto logd_size = GetByteProp(kLogdSizeProp);
             auto logd_tag = GetStrProp(kLogdTagProp);
             auto logd_main_size = GetByteProp(kLogdMainSizeProp);
             auto logd_crash_size = GetByteProp(kLogdCrashSizeProp);
-            if (!logd_tag.empty() ||
-                !((logd_main_size == kErr && logd_crash_size == kErr && logd_size != kErr &&
-                   logd_size >= kLogBufferSize) ||
-                  (logd_main_size != kErr && logd_main_size >= kLogBufferSize &&
-                   logd_crash_size != kErr &&
-                   logd_crash_size >= kLogBufferSize))) {
+            if (logd_size == kErr || (logd_size <= kLogBufferSize)){
                 SetIntProp(kLogdSizeProp, std::max(kLogBufferSize, logd_size));
+                shouldRestartLogd = true;
+            }
+            if (logd_main_size == kErr || (logd_size != kErr && logd_size <= kLogBufferSize)){
                 SetIntProp(kLogdMainSizeProp, std::max(kLogBufferSize, logd_main_size));
+                shouldRestartLogd = true;
+            }
+            if (logd_crash_size == kErr || (logd_size != kErr && logd_size <= kLogBufferSize)){
                 SetIntProp(kLogdCrashSizeProp, std::max(kLogBufferSize, logd_crash_size));
+                shouldRestartLogd = true;
+            }
+            if (!logd_tag.empty()){
                 SetStrProp(kLogdTagProp, "");
+                shouldRestartLogd = true;
+            }
+            if (shouldRestartLogd){
                 SetStrProp("ctl.start", "logd-reinit");
             }
             const auto *pi = __system_property_find(kLogdTagProp.data());
